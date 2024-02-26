@@ -1,5 +1,5 @@
 #!/bin/bash
-dir=`pwd`
+dir=$(pwd)
 ###############################################################################
 ### Main configs
 ## GPT-3 models use 2K sequence length/context window
@@ -101,12 +101,12 @@ init_std=0.013
 train_tokens_in_billion=300
 train_tokens=$((${train_tokens_in_billion} * 1000000000))
 
-## train_samples is another termination condition and also affect the number of 
+## train_samples is another termination condition and also affect the number of
 ## data samples to be indexed. Since we want to reach the train_tokens
 ## above, and data efficiency techniques may change num tokens in some samples,
 ## so we just set this config large enough to make sure we have enough
 ## processed data and don't terminate by train_samples.
-train_samples=$(( 300 * 1000000000 * 2 / ${seq_len} ))
+train_samples=$((300 * 1000000000 * 2 / ${seq_len}))
 
 ## Another wall-clock time termination condition in minutes. Set it large
 ## enough to avoid undesired early termination.
@@ -124,7 +124,7 @@ lr_warmup_tokens=$((${lr_warmup_tokens_in_million} * 1000000))
 ## Here we changed the LR decay tokens to align with total train tokens, since
 ## related works (e.g., https://arxiv.org/abs/2203.15556) find that setting the
 ## learning rate schedule to match the number of training tokens results in the
-## best final model quality 
+## best final model quality
 lr_decay_tokens_in_billion=${train_tokens_in_billion}
 lr_decay_tokens=$((${lr_decay_tokens_in_billion} * 1000000000))
 lr_decay_style="cosine"
@@ -135,7 +135,7 @@ lr_decay_style="cosine"
 mp_size=1
 
 ## Sequence parallelism, 1 is no SP
-sp_size=4
+sp_size=2
 
 ## Pipeline parallelism. To disable PP, set pp_size to 1 and no_pp to true.
 ## Note that currently both curriculum learning and random-LTD are NOT
@@ -147,12 +147,12 @@ no_pp="true"
 zero_stage=1
 
 ## Total number of GPUs. ds_ssh is from DeepSpeed library.
-num_gpus=$(($(ds_ssh nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)-2))
+num_gpus=$(($(ds_ssh nvidia-smi --query-gpu=name --format=csv,noheader | wc -l) - 2))
 num_gpus_pernode=$(nvidia-smi --query-gpu=name --format=csv,noheader | wc -l)
-num_node=$(( ${num_gpus} / ${num_gpus_pernode} ))
+num_node=$((${num_gpus} / ${num_gpus_pernode}))
 
 ## Data parallel size.
-dp_size=$(( ${num_gpus} / ${pp_size} / ${mp_size} / ${sp_size} ))
+dp_size=$((${num_gpus} / ${pp_size} / ${mp_size} / ${sp_size}))
 
 ## Micro batch size per GPU
 ## Make sure that batch_size <= global_batch_size*pp_size*mp_size/num_gpus
@@ -187,13 +187,13 @@ host="${HOSTNAME}"
 seed=1234
 num_workers=0
 
-data_path="BookCorpusDataset_text_document"
-if [ ! -f "BookCorpusDataset_text_document.bin" ]; then
-    wget https://the-eye.eu/public/AI/pile_neox/data/BookCorpusDataset_text_document.bin
-fi
-if [ ! -f "BookCorpusDataset_text_document.idx" ]; then
-    wget https://the-eye.eu/public/AI/pile_neox/data/BookCorpusDataset_text_document.idx
-fi
+data_path="data/my-gpt2_text_document"
+# if [ ! -f "BookCorpusDataset_text_document.bin" ]; then
+#     wget https://the-eye.eu/public/AI/pile_neox/data/BookCorpusDataset_text_document.bin
+# fi
+# if [ ! -f "BookCorpusDataset_text_document.idx" ]; then
+#     wget https://the-eye.eu/public/AI/pile_neox/data/BookCorpusDataset_text_document.idx
+# fi
 
 vocab_path="gpt2-vocab.json"
 if [ ! -f "$vocab_path" ]; then
@@ -224,7 +224,8 @@ fi
 jobname="${jobname}_seed${seed}_rebase"
 
 username=$(whoami)
-output_home="output"
+output_home="/nfs/10.232.64.52/nvme4/hanweiguang/saved_models/test_megatron"
+mkdir -p ${output_home}
 log_path="${output_home}/log/"
 checkpoint_path="${output_home}/checkpoint/${jobname}"
 tensorboard_dir="${output_home}/tensorboard/"
@@ -277,7 +278,7 @@ megatron_options=" \
     --load ${checkpoint_path} \
     --save ${checkpoint_path} \
     --no-async-tensor-model-parallel-allreduce \
-    --use-flash-attn-triton \
+    --use-flash-attn-v2 \
     --tensorboard-queue-size 1 \
     --log-timers-to-tensorboard \
     --log-batch-size-to-tensorboard \
@@ -285,23 +286,23 @@ megatron_options=" \
     --tensorboard-dir ${tensorboard_path}"
 
 if [ "${activation_checkpoint}" = "true" ]; then
-megatron_options="${megatron_options} \
+    megatron_options="${megatron_options} \
     --checkpoint-activations"
 fi
 
 if [ "${log_optimizer_state}" = "true" ]; then
-megatron_options="${megatron_options} \
+    megatron_options="${megatron_options} \
     --log-optimizer-states-to-tensorboard"
 fi
 
 config_json="ds_config_gbs${global_batch_size}_mbs${batch_size}_log${log_interval}_zero${zero_stage}.json"
 template_json="ds_config_gpt_TEMPLATE.json"
-sed "s/GBSIZE/${global_batch_size}/" ${template_json} \
-    | sed "s/MBSIZE/${batch_size}/" \
-    | sed "s/LOG_INTERVAL/${log_interval}/" \
-    | sed "s/ZERO_STAGE/${zero_stage}/" \
-    | sed "s/PRESCALE_GRAD/${prescale_grad}/" \
-      > ${config_json}
+sed "s/GBSIZE/${global_batch_size}/" ${template_json} |
+    sed "s/MBSIZE/${batch_size}/" |
+    sed "s/LOG_INTERVAL/${log_interval}/" |
+    sed "s/ZERO_STAGE/${zero_stage}/" |
+    sed "s/PRESCALE_GRAD/${prescale_grad}/" \
+        >${config_json}
 
 deepspeed_options=" \
     --deepspeed \
@@ -310,12 +311,12 @@ deepspeed_options=" \
     --pipeline-model-parallel-size ${pp_size}"
 
 if [[ "${no_pp}" = "true" ]]; then
-deepspeed_options="${deepspeed_options} \
+    deepspeed_options="${deepspeed_options} \
     --no-pipeline-parallel"
 fi
 
 if [ "${activation_checkpoint}" = "true" ]; then
-deepspeed_options="${deepspeed_options} \
+    deepspeed_options="${deepspeed_options} \
     --deepspeed-activation-checkpointing"
 fi
 
@@ -325,11 +326,10 @@ fi
 iteration_file="$checkpoint_path/latest_checkpointed_iteration.txt"
 iteration_file_2="$checkpoint_path/latest"
 iteration=0
-for (( node = 0; node <= num_node-1; node++ ))
-do
+for ((node = 0; node <= num_node - 1; node++)); do
     if $(ssh -q worker-"$node" "test -f \"$iteration_file\""); then
         local_iteration=$(ssh -q worker-"$node" cat $iteration_file)
-        iteration=$(( ${local_iteration} > ${iteration} ? ${local_iteration} :  ${iteration} ))
+        iteration=$((${local_iteration} > ${iteration} ? ${local_iteration} : ${iteration}))
     fi
 done
 if [[ $iteration -gt 0 ]]; then
@@ -338,4 +338,8 @@ if [[ $iteration -gt 0 ]]; then
     ds_ssh "echo $iteration_2 > $iteration_file_2"
 fi
 
-deepspeed ${dir}/../../pretrain_gpt.py ${megatron_options} ${data_options} ${deepspeed_options} 2>&1 | tee ${log_path}/${jobname}_${host}_${current_time}.log
+deepspeed ${dir}/../../pretrain_gpt.py \
+    ${megatron_options} \
+    ${data_options} \
+    ${deepspeed_options}
+# 2>&1 | tee ${log_path}/${jobname}_${host}_${current_time}.log

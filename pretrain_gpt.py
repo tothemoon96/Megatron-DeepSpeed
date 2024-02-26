@@ -27,6 +27,10 @@ import subprocess
 from torch import nn
 import torch.nn.functional as F
 
+from rich.traceback import install
+from rich.console import Console
+install(show_locals=False)
+console = Console()
 
 def model_provider(pre_process=True, post_process=True):
     """Build the model."""
