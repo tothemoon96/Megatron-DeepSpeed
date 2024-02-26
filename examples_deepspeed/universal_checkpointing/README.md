@@ -19,6 +19,26 @@ For ZeRO stage 1, we provide bash scripts for bf16 and fp16 training examples co
 
 Please note that these scripts should be run from the root folder of the repo (i.e., two levels above this README). For illustration, here are the commands for running the bf16 example. 
 
+### Download and Pre-process Training Dataset
+Before executing the steps below, you can download and pre-process the training set using the following commands (see [here](https://github.com/bigscience-workshop/Megatron-DeepSpeed?tab=readme-ov-file#quick-pre-processing-to-start-training-with) for more details):
+```bash
+wget https://huggingface.co/bigscience/misc-test-data/resolve/main/stas/oscar-1GB.jsonl.xz
+wget https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-vocab.json
+wget https://s3.amazonaws.com/models.huggingface.co/bert/gpt2-merges.txt
+xz -d oscar-1GB.jsonl.xz
+python tools/preprocess_data.py \
+    --input oscar-1GB.jsonl \
+    --output-prefix my-gpt2 \
+    --vocab-file gpt2-vocab.json \
+    --dataset-impl mmap \
+    --tokenizer-type GPT2BPETokenizer \
+    --merge-file gpt2-merges.txt \
+    --append-eod \
+    --workers 8
+```
+
+NOTE: Make sure to update your `BASE_DATA_PATH` path in the `run_[bf16/fp16].sh` and `run_universal_[bf16/fp16].sh` scripts to point to the pre-processed data.
+
 ### Step 1: Create ZeRO checkpoint
 ```bash 
   bash examples_deepspeed/universal_checkpointing/run_bf16.sh 
@@ -56,6 +76,40 @@ This resumption script effects the loading of universal checkpoint rather than t
 Please see the corresponding [pull request](https://github.com/microsoft/Megatron-DeepSpeed/pull/276) for visualizations of matching loss values between original and universal checkpoint runs for bf16 and fp16 examples.
 
 Combining sequence parallelism with data parallelism is another good use case for universal checkpointing, see [sp pull request](https://github.com/microsoft/DeepSpeed/pull/4752) for example and visualization of matching loss values.
+
+### TensorBoard Log Analysis
+
+The Universal Checkpointing example includes a TensorBoard analysis script that will generate `csv` files and `png` plots across the unviersal checkpointing training steps for comparison of training and validation loss curves.
+
+After Step 3 is completed, the script may be executed as follows:
+```bash
+bash examples_deepspeed/universal_checkpointing/run_tb_analysis.sh z1_uni_ckpt
+```
+
+The script will output the following `csv` files:
+  - uc_out_tp_2_pp_2_dp_2_sp_1.csv
+  - uc_out_tp_2_pp_2_dp_1_sp_1.csv
+  - val_uc_out_tp_2_pp_2_dp_2_sp_1.csv
+  - val_uc_out_tp_2_pp_2_dp_1_sp_1.csv
+
+The script will also output the following `png` files:
+  - uc_char_training_loss.png
+  - uc_char_validation_loss.png
+
+Below is the visualization of the `png` files generated from this example.
+
+<div align="center">
+  <img src="assets/image/uc_char_training_loss.png" alt="" width="600"/>
+
+  *Figure 1: Training LM loss curve for first 200 training steps of Step 1 (TP=2, PP=2, DP=2) and training steps 101 to 200 of Step 3 (TP=2, PP=2, DP=1), which was loaded using the Universal Checkpoint.*
+</div>
+
+<div align="center">
+  <img src="assets/image/uc_char_validation_loss.png" alt="" width="600"/>
+
+  *Figure 2: Validation LM loss curve for first 200 training steps of Step 1 (TP=2, PP=2, DP=2) and training steps 101 to 200 of Step 3 (TP=2, PP=2, DP=1), which was loaded using the Universal Checkpoint.*
+</div>
+
 
 ## ZeRO stage 2 training 
 Repeat steps in ZeRO stage 1 training above with the following modifications to your job batch scripts:
